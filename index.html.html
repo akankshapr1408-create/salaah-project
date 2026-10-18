@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Today</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #fbfbfa;
+  --ink: #1b1b1a;
+  --muted: #727270;
+  --line: #e3e3e0;
+  color-scheme: light;
+  box-sizing: border-box;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #161615; --ink: #e9e8e5; --muted: #9a9996; --line: #2b2b29; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #161615; --ink: #e9e8e5; --muted: #9a9996; --line: #2b2b29; color-scheme: dark;
+}
+html { scroll-padding-top: env(safe-area-inset-top, 0px); }
+* { box-sizing: border-box; }
+body {
+  margin: 0; min-height: 100vh; background: var(--bg); color: var(--ink);
+  font-family: "Newsreader", Georgia, "Times New Roman", serif; font-size: 1.2rem; line-height: 1.45;
+}
+.page { max-width: 520px; margin: 0 auto; padding: 72px 24px 80px; }
+h1 { margin: 0; font-size: 2.3rem; font-weight: 400; line-height: 1.15; letter-spacing: -0.01em; }
+.sub { margin: 6px 0 36px; color: var(--muted); font-style: italic; }
+button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; padding: 0; }
+:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; border-radius: 2px; }
+.entry { display: flex; align-items: baseline; gap: 16px; border-bottom: 1px solid var(--line); }
+.entry:focus-within { border-bottom-color: var(--ink); }
+.entry input {
+  flex: 1; min-width: 0; font: inherit; color: var(--ink); background: transparent;
+  border: 0; border-radius: 0; padding: 10px 0;
+}
+.entry input::placeholder { color: var(--muted); opacity: 1; }
+.entry input:focus-visible { outline: 0; }
+.add { color: var(--muted); font-size: 1.05rem; }
+.add:hover { color: var(--ink); }
+.filters { display: flex; gap: 22px; margin: 22px 0 6px; font-size: 1.02rem; }
+.filters button { color: var(--muted); padding-bottom: 2px; }
+.filters button:hover { color: var(--ink); }
+.filters button[aria-pressed="true"] {
+  color: var(--ink); text-decoration: underline; text-underline-offset: 6px; text-decoration-thickness: 1px;
+}
+ul { list-style: none; margin: 0; padding: 0; }
+li { display: flex; align-items: baseline; gap: 14px; padding: 15px 0; border-bottom: 1px solid var(--line); }
+li.enter { animation: in .25s ease-out; }
+li.leaving { opacity: 0; transition: opacity .18s; }
+@keyframes in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+.box {
+  flex: none; position: relative; top: 3px; width: 20px; height: 20px; border: 1.5px solid var(--ink);
+  border-radius: 50%; transition: background-color .15s;
+}
+.box[aria-checked="true"] { background: var(--ink); }
+.box[aria-checked="true"]::after {
+  content: ""; position: absolute; left: 5.5px; top: 2px; width: 5px; height: 9px;
+  border-right: 1.5px solid var(--bg); border-bottom: 1.5px solid var(--bg); transform: rotate(40deg);
+}
+.txt { flex: 1; overflow-wrap: anywhere; transition: color .2s; }
+li.done .txt { color: var(--muted); text-decoration: line-through; text-decoration-thickness: 1px; }
+.del { color: var(--muted); font-size: .95rem; }
+.del:hover { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
+.none { display: block; padding: 18px 0; color: var(--muted); font-style: italic; border-bottom: 1px solid var(--line); }
+.foot { margin-top: 20px; }
+.clear { color: var(--muted); font-size: 1rem; text-decoration: underline; text-underline-offset: 4px; text-decoration-thickness: 1px; }
+.clear:hover { color: var(--ink); }
+@media (max-width: 420px) { .page { padding: 40px 20px 64px; } h1 { font-size: 2rem; } }
+@media (prefers-reduced-motion: reduce) {
+  li.enter { animation: none; }
+  li.leaving, .box, .txt { transition: none; }
+}
+</style>
+</head>
+<body>
+<main class="page">
+  <h1 id="today"></h1>
+  <p class="sub" id="sub"></p>
+
+  <div class="entry">
+    <input type="text" id="taskInput" placeholder="Add a task" maxlength="100" aria-label="New task">
+    <button class="add" id="addBtn" type="button">Add</button>
+  </div>
+
+  <div class="filters" role="group" aria-label="Filter tasks">
+    <button type="button" data-filter="all" aria-pressed="true">All</button>
+    <button type="button" data-filter="pending" aria-pressed="false">Pending</button>
+    <button type="button" data-filter="completed" aria-pressed="false">Completed</button>
+  </div>
+
+  <ul id="list" aria-live="polite"></ul>
+
+  <div class="foot"><button class="clear" id="clearBtn" type="button" hidden>Clear completed</button></div>
+</main>
+
+<script>
+(function () {
+  var KEY = "task-manager.tasks";
+  var tasks = load(), filter = "all", enterId = null;
+  var reduce = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+  var input = document.getElementById("taskInput");
+  var list = document.getElementById("list");
+
+  document.getElementById("today").textContent =
+    new Date().toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" });
+
+  function load() {
+    try {
+      var d = JSON.parse(localStorage.getItem(KEY) || "[]");
+      return Array.isArray(d) ? d : [];
+    } catch (e) { return []; }
+  }
+  function save() { try { localStorage.setItem(KEY, JSON.stringify(tasks)); } catch (e) {} }
+
+  function addTask() {
+    var text = input.value.trim();
+    if (!text) { input.focus(); return; }
+    var t = { id: Date.now() + Math.random(), text: text, done: false };
+    tasks.unshift(t); enterId = t.id;
+    input.value = ""; save(); render(); input.focus();
+  }
+
+  function render() {
+    var open = tasks.filter(function (t) { return !t.done; }).length;
+    var done = tasks.length - open;
+    var shown = tasks.filter(function (t) {
+      return filter === "all" || (filter === "completed" ? t.done : !t.done);
+    });
+
+    list.innerHTML = "";
+    if (!shown.length) {
+      var n = document.createElement("li");
+      n.className = "none";
+      n.textContent = { all: "Nothing yet.", pending: "Nothing left to do.", completed: "Nothing finished yet." }[filter];
+      list.appendChild(n);
+    }
+    shown.forEach(function (t) {
+      var li = document.createElement("li");
+      li.className = (t.done ? "done" : "") + (t.id === enterId ? " enter" : "");
+
+      var box = document.createElement("button");
+      box.type = "button"; box.className = "box";
+      box.setAttribute("role", "checkbox");
+      box.setAttribute("aria-checked", String(t.done));
+      box.setAttribute("aria-label", "Mark “" + t.text + "” complete");
+      box.addEventListener("click", function () { t.done = !t.done; enterId = null; save(); render(); });
+
+      var txt = document.createElement("span");
+      txt.className = "txt"; txt.textContent = t.text;
+
+      var del = document.createElement("button");
+      del.type = "button"; del.className = "del"; del.textContent = "Delete";
+      del.setAttribute("aria-label", "Delete “" + t.text + "”");
+      del.addEventListener("click", function () {
+        li.classList.add("leaving");
+        setTimeout(function () {
+          tasks = tasks.filter(function (x) { return x.id !== t.id; });
+          enterId = null; save(); render();
+        }, reduce ? 0 : 180);
+      });
+
+      li.appendChild(box); li.appendChild(txt); li.appendChild(del);
+      list.appendChild(li);
+    });
+
+    var sub;
+    if (!tasks.length) sub = "A clear day.";
+    else if (!open) sub = "All done.";
+    else sub = (open === 1 ? "One thing" : open + " things") + " left.";
+    document.getElementById("sub").textContent = sub;
+    document.getElementById("clearBtn").hidden = done === 0;
+  }
+
+  document.getElementById("addBtn").addEventListener("click", addTask);
+  input.addEventListener("keydown", function (e) { if (e.key === "Enter") addTask(); });
+  document.getElementById("clearBtn").addEventListener("click", function () {
+    tasks = tasks.filter(function (t) { return !t.done; });
+    enterId = null; save(); render();
+  });
+  document.querySelectorAll(".filters button").forEach(function (b) {
+    b.addEventListener("click", function () {
+      filter = b.dataset.filter; enterId = null;
+      document.querySelectorAll(".filters button").forEach(function (x) {
+        x.setAttribute("aria-pressed", String(x === b));
+      });
+      render();
+    });
+  });
+  render();
+})();
+</script>
+</body>
+</html>
